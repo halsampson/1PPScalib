@@ -11,33 +11,66 @@
 
 #define AudDeviceName "FrontMic" 
 
+// Note that typical mic input has ~4Hz high-pass filter (DC blocking)
+//   recording is impluse response
+
 double bufferStartSeconds;
+
+const int CurveBucketDiv = 1; // 16384 / 32; // 32 points
+int riseCurve[32768 / CurveBucketDiv];
+
 
 void audioReadyCallback(int b) {
   static int settle;
   //if (settle++ < 16) return;
 
-  for (int s = 0; s < BufferSamples; ++s) {
-    if (wavInBuf[b][s] > 12000) { // pulse edge threshold
-      printf("%d: %5d %5d %5d ", s, wavInBuf[b][s-2], wavInBuf[b][s-1], wavInBuf[b][s]);
+  const int EdgeThreshold = 18000; // auto adjust to < 90% of minimum high reading
 
-      static double samples, lastEdge;  
+  for (int s = 0; s < BufferSamples; ++s) {
+    if (wavInBuf[b][s] > EdgeThreshold) { 
+      printf("%d, %5d, %5d, %5d", s, wavInBuf[b][s-2], wavInBuf[b][s-1], wavInBuf[b][s]);
+
+      static double samples, lastEdgeSample;  
        
-      // edge midpoint level sample time interpolation
-      double edgeSample = s - (double)(wavInBuf[b][s-1] - wavInBuf[b][s-2]) / (wavInBuf[b][s] - wavInBuf[b][s-2]);
-      printf("%.2f %+.4f ", edgeSample, edgeSample - lastEdge);
+      // sample time interpolation
+      // estimate time to reach EdgeThreshold / 2 assuming linear from wavInBuf[b][s-2] to wavInBuf[b][s] (vs. slow near top -> lower threshold)
+
+      // Don't know when pulse rise starts or ends !
+      // TODO: determine avg slope from many measurments of wavInBuf[b][s-1] -- plot CDF
+      // -2 .. -1 rise is curved 819 + 87x + 0.593x^2 + -3.16E-03x^3
+      // assume constant inter-pulse times to adjust mapping curve
+      // 819..17155 asymptotic near high end
+
+      // or slower ramp for multiple samples ?? -- add capacitance
+
+      // simple linear:
+      int s1 = wavInBuf[b][s - 1];
+      static int minS1 = 657, maxS1 = 17805;
+      if (s1 < minS1) minS1 = s1;
+      if (s1 > maxS1) maxS1 = s1;
+
+      double edgeSample = s - (double)(riseCurve[s1 / CurveBucketDiv] - minS1) / (maxS1 - minS1);
+      // [s -2] compensation?
+      printf(", %.2f, %+.4f", edgeSample, edgeSample - lastEdgeSample);
 
       static int seconds = -4; // settling
       if (seconds > 0) {
         double Hz = (samples + edgeSample) / seconds;
-        printf("%.6f Hz", Hz);
+        printf(", %.6f Hz", Hz);
+
+        static double totalOffset;
+        double avgOffset = totalOffset / seconds;
+        double deviation = (edgeSample - lastEdgeSample) - avgOffset;
+
+        totalOffset += edgeSample - lastEdgeSample;
       } else samples = -edgeSample;
       samples += BufferSamples;
-      lastEdge = edgeSample;
+      lastEdgeSample = edgeSample;
       ++seconds;
       printf("\n");
       break;
     }
+    // NOTE: 1PPS can skip seconds if signal is weak
   }
 
   bufferStartSeconds += BufferSamples / SampleHz; // next buffer start time
@@ -65,6 +98,9 @@ void startAudioIn() {
 }
 
 int main() {
+  for (int i=0; i < sizeof riseCurve / sizeof riseCurve[0]; ++i)
+    riseCurve[i] = i * CurveBucketDiv;  // linear to start or asymptotic formula like 819 + 87x + 0.593x^2 + -3.16E-03x^3
+
   setupAudioIn(AudDeviceName, &audioReadyCallback);
   startAudioIn();
   

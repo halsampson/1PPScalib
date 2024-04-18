@@ -5,7 +5,7 @@
 #include <mmsystem.h>
 #pragma comment(lib, "Winmm.lib")
 
-const unsigned short MicLevel = 65535 / 5; // 5V signal
+const unsigned short MicLevel = 65535 / 3; // 5V signal
 // TODO: also set Mic Boost
 //    MIXERCONTROL_CONTROLTYPE_DECIBELS ??
 
