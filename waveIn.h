@@ -1,6 +1,10 @@
 #pragma once
 
-const double SampleHz = 191996.709;              // Audio sampling rate measured by long recording of 1PPS
+const double SampleHz = 191996.605;              // Audio sampling rate measured by long recording of 1PPS
+// .605 @ 77F
+// .633 @ 76F
+// 
+// 
   // TODO: automate SampleHz measurement from 1PPS or from WWVB phase drift (long term averaged)
   //  Use 'f' key to see estimated error
 

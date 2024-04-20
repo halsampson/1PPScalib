@@ -12,13 +12,12 @@
 #define AudDeviceName "FrontMic" 
 
 // Note that typical mic input has ~4Hz high-pass filter (DC blocking)
-//   recording is impluse response
+//   recording is impulse response
 
 double bufferStartSeconds;
 
 const int CurveBucketDiv = 1; // 16384 / 32; // 32 points
 int riseCurve[32768 / CurveBucketDiv];
-
 
 void audioReadyCallback(int b) {
   static int settle;
@@ -26,8 +25,16 @@ void audioReadyCallback(int b) {
 
   const int EdgeThreshold = 18000; // auto adjust to < 90% of minimum high reading
 
+  static bool once;
+
   for (int s = 0; s < BufferSamples; ++s) {
     if (wavInBuf[b][s] > EdgeThreshold) { 
+      if (!once) {
+        once = true;
+        printf("PC clock off %+.3f s\n", fmod(bufferStartSeconds + s / SampleHz + 0.5, 1) - 0.5); // assume < 500 ms
+        // compare with http://nist.time.gov
+      }
+
       printf("%d, %5d, %5d, %5d", s, wavInBuf[b][s-2], wavInBuf[b][s-1], wavInBuf[b][s]);
 
       static double samples, lastEdgeSample;  
