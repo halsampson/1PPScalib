@@ -26,6 +26,7 @@ void audioReadyCallback(int b) {
   const int EdgeThreshold = 18000; // auto adjust to < 90% of minimum high reading
 
   static bool once;
+  static double edgeSample, lastEdgeSample;
 
   for (int s = 0; s < BufferSamples; ++s) {
     if (wavInBuf[b][s] > EdgeThreshold) { 
@@ -37,7 +38,7 @@ void audioReadyCallback(int b) {
 
       printf("%d, %5d, %5d, %5d", s, wavInBuf[b][s-2], wavInBuf[b][s-1], wavInBuf[b][s]);
 
-      static double samples, lastEdgeSample;  
+      static double samples;  
        
       // sample time interpolation
       // estimate time to reach EdgeThreshold / 2 assuming linear from wavInBuf[b][s-2] to wavInBuf[b][s] (vs. slow near top -> lower threshold)
@@ -56,31 +57,31 @@ void audioReadyCallback(int b) {
       if (s1 < minS1) minS1 = s1;
       if (s1 > maxS1) maxS1 = s1;
 
-      double edgeSample = s - (double)(riseCurve[s1 / CurveBucketDiv] - minS1) / (maxS1 - minS1);
+      edgeSample = s - (double)(riseCurve[s1 / CurveBucketDiv] - minS1) / (maxS1 - minS1);
       // [s -2] compensation?
-      printf(", %.2f, %+.4f", edgeSample, edgeSample - lastEdgeSample);
+
+      if (fabs(edgeSample - lastEdgeSample) > 1)  // audio discontinuous
+        break;
 
       static int seconds = -4; // settling
-      if (seconds > 0) {
-        double Hz = (samples + edgeSample) / seconds;
-        printf(", %.6f Hz", Hz);
-
+      if (++seconds > 0) {
+        double offset = edgeSample - lastEdgeSample;
         static double totalOffset;
+        totalOffset += offset;
         double avgOffset = totalOffset / seconds;
-        double deviation = (edgeSample - lastEdgeSample) - avgOffset;
+        double deviation = offset - avgOffset;
+        printf(", %+.4f, %+3.0f%%", avgOffset, 100 * deviation / avgOffset);
 
-        totalOffset += edgeSample - lastEdgeSample;
-      } else samples = -edgeSample;
-      samples += BufferSamples;
-      lastEdgeSample = edgeSample;
-      ++seconds;
-      printf("\n");
+        samples += BufferSamples + offset;
+        double Hz = samples / seconds;
+        printf(", %.6f Hz", Hz);
+      }
       break;
     }
     // NOTE: 1PPS can skip seconds if signal is weak
   }
-
-  bufferStartSeconds += BufferSamples / SampleHz; // next buffer start time
+  lastEdgeSample = edgeSample;
+  printf("\n");
 }
 
 

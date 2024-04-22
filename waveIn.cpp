@@ -142,8 +142,10 @@ void setupAudioIn(const char* deviceName, void (*waveInRdy)(int b)) {
 
 void startWaveIn() {
   MMRESULT res = waveInStart(hwi);
+  SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED); // don't sleep, run in background
 }
 
 void stopWaveIn() {
   waveInStop(hwi);
+  SetThreadExecutionState(ES_CONTINUOUS);
 }
