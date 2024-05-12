@@ -11,7 +11,11 @@
 
 #define AudDeviceName "FrontMic" 
 
-// 1PPS has 25ns jitter
+// TODO: update to latest waveIn (from WWVB) or merge into WWVB for initial calibration
+//    WWVB PCM wants accuracy < ~10% of 60 kHz cycle over 0.5 second ~3 ppm
+//    so calibrate for > 2 seconds 
+
+// 1PPS has up to 25ns jitter (inconsequential) and can skip pulses if satellite signals are weak
 
 // Note that typical mic input has ~4Hz high-pass filter (DC blocking)
 //   recording is impulse response
@@ -26,7 +30,7 @@ short index[MaxSeconds];  // keet ordered by sampleVal
 int second; // 1PPS
 
 void audioReadyCallback(int b) {
-  const int EdgeThreshold = 22560 * 9 / 10; // adjust to 90% of high readings
+  const int EdgeThreshold = 22560 * 9 / 10; // adjust to ~90% of high sammpleVals
 
   static bool once;
   for (int s = 0; s < BufferSamples; ++s) {
@@ -52,7 +56,7 @@ void audioReadyCallback(int b) {
       for (int i = 0; i < second; ++i) { // Hz based on sample counts between closest matched pairs of rising edge voltages
         int seconds = index[i+1] - index[i];
         int sampleOfs = samplePos[index[i+1]] - samplePos[index[i]];
-        double weight = (double)abs(seconds);
+        double weight = (double)abs(seconds) / (abs(sampleVal[index[i+1]] - sampleVal[index[i]]) + 30);
         sumHz += (BufferSamples + (double)sampleOfs / seconds) * weight;        
         sumWeight += weight;
       }
