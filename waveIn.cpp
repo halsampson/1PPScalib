@@ -5,6 +5,9 @@
 #include <mmsystem.h>
 #pragma comment(lib, "Winmm.lib")
 
+// ***** See WWVB repo for later version
+
+
 const unsigned short MicLevel = 65535 / 3; // 5V signal
 // TODO: also set Mic Boost
 //    MIXERCONTROL_CONTROLTYPE_DECIBELS ??
@@ -142,10 +145,8 @@ void setupAudioIn(const char* deviceName, void (*waveInRdy)(int b)) {
 
 void startWaveIn() {
   MMRESULT res = waveInStart(hwi);
-  SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED); // don't sleep, run in background
 }
 
 void stopWaveIn() {
   waveInStop(hwi);
-  SetThreadExecutionState(ES_CONTINUOUS);
 }

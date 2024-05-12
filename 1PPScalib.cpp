@@ -11,77 +11,60 @@
 
 #define AudDeviceName "FrontMic" 
 
+// 1PPS has 25ns jitter
+
 // Note that typical mic input has ~4Hz high-pass filter (DC blocking)
 //   recording is impulse response
 
 double bufferStartSeconds;
 
-const int CurveBucketDiv = 1; // 16384 / 32; // 32 points
-int riseCurve[32768 / CurveBucketDiv];
+const int MaxSeconds = 3600;
+
+int   samplePos[MaxSeconds];
+short sampleVal[MaxSeconds];
+short index[MaxSeconds];  // keet ordered by sampleVal
+int second; // 1PPS
 
 void audioReadyCallback(int b) {
-  static int settle;
-  //if (settle++ < 16) return;
-
-  const int EdgeThreshold = 18000; // auto adjust to < 90% of minimum high reading
+  const int EdgeThreshold = 22560 * 9 / 10; // adjust to 90% of high readings
 
   static bool once;
-  static double edgeSample, lastEdgeSample;
-
   for (int s = 0; s < BufferSamples; ++s) {
     if (wavInBuf[b][s] > EdgeThreshold) { 
       if (!once) {
         once = true;
-        printf("PC clock off %+.3f s\n", fmod(bufferStartSeconds + s / SampleHz + 0.5, 1) - 0.5); // assume < 500 ms
+        printf("PC clock off %+.3f s\n\n", fmod(bufferStartSeconds + s / SampleHz + 0.5, 1) - 0.5); // assume < 500 ms
         // compare with http://nist.time.gov
       }
 
-      printf("%d, %5d, %5d, %5d", s, wavInBuf[b][s-2], wavInBuf[b][s-1], wavInBuf[b][s]);
+      samplePos[second] = s-1;  // rising edge
+      sampleVal[second] = wavInBuf[b][s-1];
 
-      static double samples;  
-       
-      // sample time interpolation
-      // estimate time to reach EdgeThreshold / 2 assuming linear from wavInBuf[b][s-2] to wavInBuf[b][s] (vs. slow near top -> lower threshold)
+      int i;
+      for (i = 0; i < second; ++i)
+        if (sampleVal[second] <= sampleVal[index[i]]) { // found index
+          memmove(index + i + 1, index + i, (second - i) * sizeof(index[0]));
+          break;
+        }      
+      index[i] = second;
 
-      // Don't know when pulse rise starts or ends !
-      // TODO: determine avg slope from many measurments of wavInBuf[b][s-1] -- plot CDF
-      // -2 .. -1 rise is curved 819 + 87x + 0.593x^2 + -3.16E-03x^3
-      // assume constant inter-pulse times to adjust mapping curve
-      // 819..17155 asymptotic near high end
-
-      // or slower ramp for multiple samples ?? -- add capacitance
-
-      // simple linear:
-      int s1 = wavInBuf[b][s - 1];
-      static int minS1 = 657, maxS1 = 17805;
-      if (s1 < minS1) minS1 = s1;
-      if (s1 > maxS1) maxS1 = s1;
-
-      edgeSample = s - (double)(riseCurve[s1 / CurveBucketDiv] - minS1) / (maxS1 - minS1);
-      // [s -2] compensation?
-
-      if (fabs(edgeSample - lastEdgeSample) > 1)  // audio discontinuous
-        break;
-
-      static int seconds = -4; // settling
-      if (++seconds > 0) {
-        double offset = edgeSample - lastEdgeSample;
-        static double totalOffset;
-        totalOffset += offset;
-        double avgOffset = totalOffset / seconds;
-        double deviation = offset - avgOffset;
-        printf(", %+.4f, %+3.0f%%", avgOffset, 100 * deviation / avgOffset);
-
-        samples += BufferSamples + offset;
-        double Hz = samples / seconds;
-        printf(", %.6f Hz", Hz);
+      double sumHz = 0, sumWeight = 0;
+      for (int i = 0; i < second; ++i) { // Hz based on sample counts between closest matched pairs of rising edge voltages
+        int seconds = index[i+1] - index[i];
+        int sampleOfs = samplePos[index[i+1]] - samplePos[index[i]];
+        double weight = (double)abs(seconds);
+        sumHz += (BufferSamples + (double)sampleOfs / seconds) * weight;        
+        sumWeight += weight;
       }
+
+      if (second)
+        printf("%.6f Hz\r", sumHz / sumWeight);  // average
+
       break;
     }
     // NOTE: 1PPS can skip seconds if signal is weak
   }
-  lastEdgeSample = edgeSample;
-  printf("\n");
+  if (++second >= MaxSeconds) exit;
 }
 
 
@@ -106,9 +89,6 @@ void startAudioIn() {
 }
 
 int main() {
-  for (int i=0; i < sizeof riseCurve / sizeof riseCurve[0]; ++i)
-    riseCurve[i] = i * CurveBucketDiv;  // linear to start or asymptotic formula like 819 + 87x + 0.593x^2 + -3.16E-03x^3
-
   setupAudioIn(AudDeviceName, &audioReadyCallback);
   startAudioIn();
   
