@@ -56,7 +56,7 @@ void audioReadyCallback(int b) {
       for (int i = 0; i < second; ++i) { // Hz based on sample counts between closest matched pairs of rising edge voltages
         int seconds = index[i+1] - index[i];
         int sampleOfs = samplePos[index[i+1]] - samplePos[index[i]];
-        double weight = (double)abs(seconds) / (abs(sampleVal[index[i+1]] - sampleVal[index[i]]) + 30);
+        double weight = (double)abs(seconds) / (sampleVal[index[i+1]] - sampleVal[index[i]] + EdgeThreshold);
         sumHz += (BufferSamples + (double)sampleOfs / seconds) * weight;        
         sumWeight += weight;
       }
